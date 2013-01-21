@@ -5,6 +5,14 @@ var fs = require('fs')
 var github_config = JSON.parse( fs.readFileSync( 
   path.resolve(__dirname, 'github-config.json'), 'utf-8' ) )
 
+var APP_URL="localhost";
+if (process.env.VCAP_APPLICATION)
+  APP_URL = JSON.parse(process.env.VCAP_APPLICATION).uris[0]
+
+github_config.redirect_uri = "http://"+APP_URL;
+github_config.callback_url = "http://"+APP_URL+"/oauth/github";
+
+
 exports.Github = (function(){
   
   var github_api = 'https://api.github.com/'

@@ -1,0 +1,15 @@
+name: dillinger
+mem: 128M
+services:
+  ${name}-fs: filesystem
+ignores: [".git","node_modules"]
+hooks:
+  pre-running:
+    - export FS=$STACKATO_FILESYSTEM
+    - echo "Migrating data to shared filesystem..."
+    - mkdir -p public/files/md
+    - mkdir -p public/files/html
+    - cp -r public/files $FS
+    - echo "Symlink to public folder in shared filesystem..."
+    - rm -fr public/files
+    - ln -s $FS/files public/files

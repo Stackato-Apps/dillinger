@@ -2,5 +2,4 @@
 node_modules/*
 logs/*
 public/files/*
-*-config.json
 backup/*

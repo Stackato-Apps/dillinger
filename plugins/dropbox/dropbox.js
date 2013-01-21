@@ -7,6 +7,16 @@ var fs = require('fs')
 var dropbox_config = JSON.parse( fs.readFileSync( 
   path.resolve(__dirname, 'dropbox-config.json'), 'utf-8' ) )
 
+var APP_URL="localhost";
+if (process.env.VCAP_APPLICATION)
+  APP_URL = JSON.parse(process.env.VCAP_APPLICATION).uris[0]
+
+dropbox_config.callback_url = "http://"+APP_URL+"/oauth/dropbox";
+dropbox_config.auth_url = "https://www.dropbox.com/1/oauth/authorize";
+dropbox_config.request_token_url = "https://api.dropbox.com/1/oauth/request_token";
+dropbox_config.access_token_url = "https://api.dropbox.com/1/oauth/access_token";
+
+
 exports.Dropbox = (function(){
   
   var ACCOUNT_INFO_URI = 'https://api.dropbox.com/1/account/info'
