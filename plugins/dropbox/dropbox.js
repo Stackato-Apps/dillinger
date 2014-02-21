@@ -1,152 +1,138 @@
 var fs = require('fs')
   , path = require('path')
   , request = require('request')
+  , dbox = require('dbox')
   , qs = require('querystring')
+  , url = require('url')
   , _ = require('lodash')
 
-var dropbox_config = JSON.parse( fs.readFileSync( 
-  path.resolve(__dirname, 'dropbox-config.json'), 'utf-8' ) )
+var dropbox_config_file = path.resolve(__dirname, 'dropbox-config.json')
+  , dropbox_config = {}
+  , isConfigEnabled = false
+// ^^^helps with the home page view; should we show the dropbox dropdown?
 
-var APP_URL="localhost";
-if (process.env.VCAP_APPLICATION)
-  APP_URL = JSON.parse(process.env.VCAP_APPLICATION).uris[0]
+if(fs.existsSync(dropbox_config_file)) {
+  dropbox_config = JSON.parse( fs.readFileSync( dropbox_config_file, 'utf-8' ) )
+  isConfigEnabled = true
+} else {
+  dropbox_config = {
+    "app_key": "YOUR_KEY"
+  , "app_secret": "YOUR_SECRET"
+  , "callback_url": "YOUR_CALLBACK_URL"
+  , "auth_url": "https://www.dropbox.com/1/oauth/authorize"
+  , "request_token_url": "https://api.dropbox.com/1/oauth/request_token"
+  , "access_token_url": "https://api.dropbox.com/1/oauth/access_token"
+  , "collections_url": "https://api-content.dropbox.com/1"
+  }
+  console.warn('Dropbox config not found at ' + dropbox_config_file + '. Plugin disabled.')
+}
 
-dropbox_config.callback_url = "http://"+APP_URL+"/oauth/dropbox";
-dropbox_config.auth_url = "https://www.dropbox.com/1/oauth/authorize";
-dropbox_config.request_token_url = "https://api.dropbox.com/1/oauth/request_token";
-dropbox_config.access_token_url = "https://api.dropbox.com/1/oauth/access_token";
+exports.Dropbox = (function() {
 
+  var dboxapp = dbox.app({ 
+  	"app_key": dropbox_config.app_key, 
+  	"app_secret": dropbox_config.app_secret, 
+  	"root": "dropbox" })
 
-exports.Dropbox = (function(){
-  
-  var ACCOUNT_INFO_URI = 'https://api.dropbox.com/1/account/info'
-    , API_URI = 'https://api.dropbox.com/1'
-    , CONTENT_API_URI = 'https://api-content.dropbox.com/1'
-    , METADATA_URI = 'https://api.dropbox.com/1/metadata/dropbox/'
-    , SEARCH_URI = 'https://api.dropbox.com/1/search/dropbox'
-    , FILES_GET_URI = 'https://api-content.dropbox.com/1/files/dropbox'
-    , FILES_PUT_URI = 'https://api-content.dropbox.com/1/files_put/dropbox'
-    , THUMBNAILS_URI = 'https://api-content.dropbox.com/1/thumbnails/dropbox'
-    , DELTA_URI = 'https://api.dropbox.com/1/delta'
   
   return {
+    isConfigured: isConfigEnabled, 
     config: dropbox_config,
-    getNewRequestToken: function(req,res,cb){
-
-      var url = dropbox_config.request_token_url
-        , oauth = { 
-                    consumer_key: dropbox_config.app_key
-                  , consumer_secret: dropbox_config.app_secret
-                  }
+    getNewRequestToken: function(req, res, cb) {
 
       // Create your auth_url for the view   
-      request.post({url:url, oauth:oauth}, function (e, r, body) {
+      dboxapp.requesttoken(function(status, request_token){
 
-        if(e) return cb(e,null)
-        
-        return cb(null,qs.parse(body))
+        return cb(status, request_token)
 
-      }) // end request.post()
+      })
 
     },
-    getRemoteAccessToken: function(access_token, request_token_secret, cb){
+    getRemoteAccessToken: function(request_token, request_token_secret, cb) {
 
-      var url = dropbox_config.access_token_url
-        , oauth = { 
-                    consumer_key: dropbox_config.app_key
-                  , consumer_secret: dropbox_config.app_secret
-                  , token: access_token
-                  , token_secret: request_token_secret
-                  }
+      var req_token = {oauth_token : request_token, oauth_token_secret : request_token_secret}
 
-      // Create your auth_url for the view   
-      request.get({url:url, oauth:oauth}, function (e, r, body) {
-
-        if(e) return cb(e,null)
-        
-        return cb(null,qs.parse(body))
-
-      }) // end request.get()
+      dboxapp.accesstoken(req_token, function(status, access_token){
+	      return cb(status, access_token)
+      })
       
     }, // end getRemoteAccessToken()
-    getAccountInfo: function(dropbox_obj, cb){
-      
-      var oauth = { 
-                    consumer_key: dropbox_config.app_key
-                  , consumer_secret: dropbox_config.app_secret
-                  , token: dropbox_obj.oauth.access_token
-                  , token_secret: dropbox_obj.oauth.access_token_secret
-                  }
+    getAccountInfo: function(dropbox_obj, cb) {
+      var access_token = {oauth_token : dropbox_obj.oauth.access_token, oauth_token_secret : dropbox_obj.oauth.access_token_secret};
 
-      request.get({url: ACCOUNT_INFO_URI, oauth:oauth}, function (e, r, b) {
+      var dboxclient = dboxapp.client(access_token)
 
-        if(e) return cb(e,null)
-
-        return cb(null,b)
-
-      }) // end request.post()
-
+      dboxclient.account(function(status, reply){
+        return cb(status, reply)
+      })
       
     }, // end getAccountInfo()
-    fetchDropboxFile: function(req,res){
+    fetchDropboxFile: function(req, res) {
       
       if(!req.session.isDropboxSynced){
         res.type('text/plain')
         return res.status(403).send("You are not authenticated with Dropbox.")
       } 
 
-      var oauth = { 
-                    consumer_key: dropbox_config.app_key
-                  , consumer_secret: dropbox_config.app_secret
-                  , token: req.session.dropbox.oauth.access_token
-                  , token_secret: req.session.dropbox.oauth.access_token_secret
-                  }
+      var access_token = {
+      	oauth_token : req.session.dropbox.oauth.access_token, 
+      	oauth_token_secret : req.session.dropbox.oauth.access_token_secret
+     	}
+
+      var dboxclient = dboxapp.client(access_token)
                   
       var pathToMdFile = req.body.mdFile
 
-      // For some reason dropbox needs me to do this...
-      // Otherwise, spaces and shit get fuct up
-      // TODO: DRY THIS UP
-      var name = pathToMdFile.split('/').pop()
-      var encodedName = encodeURIComponent(name)
-      pathToMdFile = pathToMdFile.replace(name, encodedName)
+      dboxclient.get(pathToMdFile, function(status, reply, metadata) {
 
-      var uri = FILES_GET_URI + pathToMdFile
+        // https://github.com/joemccann/dillinger/issues/64
+        // In case of an empty file...
+        reply = reply ? reply.toString() : ''
 
-      request.get({
-        oauth: oauth,
-        uri: uri,
-        callback: function(e,r,data){
-          if(e) {
-            console.error(e)
-            return res.json(e)
-          }
-          if(data) {
-            return res.json({data: data})
-          }        
-        }
+        return res.json({data: reply.toString()})
+
       })
+
     },
-    searchForMdFiles: function(dropbox_obj,cb){
+    searchForMdFiles: function(dropbox_obj, cb) {
       
       // *sigh* http://forums.dropbox.com/topic.php?id=50266&replies=1
-      var uri = SEARCH_URI + "/?query=.md&file_limit=500"
       
-      var oauth = { 
-                    consumer_key: dropbox_config.app_key
-                  , consumer_secret: dropbox_config.app_secret
-                  , token: dropbox_obj.oauth.access_token
-                  , token_secret: dropbox_obj.oauth.access_token_secret
-                  }
-      
-      request.get({url: uri, oauth:oauth}, function (e, r, b) {
+      var access_token = {oauth_token : dropbox_obj.oauth.access_token, oauth_token_secret : dropbox_obj.oauth.access_token_secret};
 
-        if(e) return cb(e,null)
+      var dboxclient = dboxapp.client(access_token)
 
-        b = JSON.parse(b)
-        return cb(null,b)
+      var options = {
+        file_limit         : 500,
+        include_deleted    : false
+      }
 
-      }) // end request.get()
+      dboxclient.search("/", ".md", options, function(status, reply) {
+        var regex = /.*\.md$/i
+        	,	files = []
+        	;
+
+        if(status > 399 || !reply){
+        	return cb(new Error('Bad response.'))
+        }
+
+        reply.forEach(function(item){
+          if(regex.test(item.path)) {
+            files.push(item)
+          }
+        })
+
+        dboxclient.search("/", ".mdown", options, function(status, reply) {
+          files = files.concat(reply)
+
+          dboxclient.search("/", ".markdown", options, function(status, reply) {
+            files = files.concat(reply)
+            return cb(status, files)
+          })
+
+        })
+
+      })
         
     },
     saveToDropbox: function(req, res){
@@ -156,43 +142,36 @@ exports.Dropbox = (function(){
         return res.status(403).send("You are not authenticated with Dropbox.")
       } 
 
-      var oauth = { 
-                    consumer_key: dropbox_config.app_key
-                  , consumer_secret: dropbox_config.app_secret
-                  , token: req.session.dropbox.oauth.access_token
-                  , token_secret: req.session.dropbox.oauth.access_token_secret
-                  }
+      var access_token = {oauth_token : req.session.dropbox.oauth.access_token, oauth_token_secret : req.session.dropbox.oauth.access_token_secret};
+
+      var dboxclient = dboxapp.client(access_token)
 
       // TODO: EXPOSE THE CORE MODULE SO WE CAN GENERATE RANDOM NAMES
 
       var pathToMdFile = req.body.pathToMdFile || '/Dillinger/' + md.generateRandomMdFilename('md')
       var contents = req.body.fileContents || 'Test Data from Dillinger.'
-      // For some reason dropbox needs me to do this...
-      // Otherwise, spaces and shit get fuct up
-      var name = pathToMdFile.split('/').pop()
-      var encodedName = encodeURIComponent(name)
-      
-      pathToMdFile = pathToMdFile.replace(name, encodedName)
-      
-      var uri = FILES_PUT_URI + pathToMdFile 
-      
-      request.put({
-        oauth: oauth,
-        uri: uri,
-        body: contents, 
-        callback: function(e,r,data){
-          if(e) {
-            console.error(e)
-            return res.json(e)
-          }
-          if(data) {
-            // console.dir(data)
-            return res.json({data: data})
-          }        
-        }
+
+      dboxclient.put(pathToMdFile, contents, function(status, reply){
+        return res.json({data: reply})
       })
 
-    } // end saveToDropbox
+    }, // end saveToDropbox
+    handleIncomingFlowRequest: function(req, res, cb){
+
+    	var	filePath = req.query['path']
+    		,	access_token = {oauth_token : req.session.dropbox.oauth.access_token, oauth_token_secret : req.session.dropbox.oauth.access_token_secret}
+    		,	dboxclient = dboxapp.client(access_token)
+
+    	if(!access_token){
+	    	return res.redirect('/redirect/dropbox')
+    	}
+
+      dboxclient.get(filePath, function(status, reply, metadata){
+	      return res.json({data: reply.toString(), filename: path.basename(filePath)})
+      })
+
+    } // end handleIncomingFlowRequest
+
   }
   
 })()

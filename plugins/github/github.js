@@ -2,8 +2,24 @@ var fs = require('fs')
   , path = require('path')
   , request = require('request')
 
-var github_config = JSON.parse( fs.readFileSync( 
-  path.resolve(__dirname, 'github-config.json'), 'utf-8' ) )
+var github_config_file = path.resolve(__dirname, 'github-config.json')
+  , github_config = {}
+  , isConfigEnabled = false 
+
+// ^^^helps with the home page view; should we show the github dropdown?
+
+if(fs.existsSync(github_config_file)) {
+  github_config = JSON.parse( fs.readFileSync( github_config_file, 'utf-8' ) )
+  isConfigEnabled = true
+} else {
+  github_config = {
+    "client_id": "YOUR_ID"
+  , "redirect_uri": "http://dillinger.io/"
+  , "client_secret": "YOUR_SECRET"
+  , "callback_url": "http://dillinger.io/oauth/github"
+  }
+  console.warn('Github config not found at ' + github_config_file + '. Plugin disabled.')
+}
 
 var APP_URL="localhost";
 if (process.env.VCAP_APPLICATION)
@@ -26,6 +42,7 @@ exports.Github = (function(){
   }
   
   return {
+    isConfigured: isConfigEnabled,
     github_config: github_config,
     generateAuthUrl: function(req,res){
       return _buildAuthUrl()
@@ -34,14 +51,23 @@ exports.Github = (function(){
       
       var uri = github_api + 'user?access_token=' + req.session.github.oauth
 
-      request.get(uri, function(err, resp, data){
-        if(err) {
-          console.error(err)
-          return res.redirect(resp.statusCode)
+      var options = {
+        headers: {
+          "User-Agent": "X-Dillinger-App"
+        },
+        uri: uri
+      }
+
+      console.log('getting username from github: ' + uri)
+
+      request(options, function(e, r, d){
+        if(e) {
+          console.error(e)
+          return res.redirect(r.statusCode)
         }
-        else if(!err && resp.statusCode === 200) 
+        else if(!e && r.statusCode === 200) 
         {
-          var d = JSON.parse(data)
+          d = JSON.parse(d)
           req.session.github.username = d.login 
           cb && cb()
         }
@@ -52,16 +78,21 @@ exports.Github = (function(){
       
       var uri = github_api + 'user/repos?access_token=' + req.session.github.oauth
 
-      request.get(uri, function(e, r, d){
+      var options = {
+        headers: {
+          "User-Agent": "X-Dillinger-App"
+        },
+        uri: uri
+      }
+
+      request(options, function(e, r, d){
         if(e) {
-          res.send(
-            {
-              error: 'Request error.' 
-            , data: r.statusCode
-            })
+          res.send({
+            error: 'Request error.',
+            data: r.statusCode
+          })
         }
-        else if(!e && r.statusCode == 200) 
-        {
+        else if(!e && r.statusCode == 200){
           var set = []
 
           d = JSON.parse(d)
@@ -71,6 +102,7 @@ exports.Github = (function(){
             var item = 
             {
               url: el.url
+            , name: el.name
             , private: el.private
             }
 
@@ -93,18 +125,24 @@ exports.Github = (function(){
                         + '/'
                         + req.body.repo
                         +'/branches?access_token=' + req.session.github.oauth
+      var options = {
+        headers: {
+          "User-Agent": "X-Dillinger-App"
+        },
+        uri: uri
+      }
 
-      request.get(uri, function(err, resp, data){
-        if(err) {
+      request(options, function(e, r, d){
+        if(e) {
           res.send(
             {
               error: 'Request error.' 
-            , data: resp.statusCode
+            , d: r.statusCode
             })
         }
-        else if(!err && resp.statusCode === 200) 
+        else if(!e && r.statusCode === 200) 
         {
-          res.send(data)
+          res.send(d)
         } // end else if
         else{
           res.json({error: 'Unable to fetch repos from Github.'})
@@ -124,18 +162,25 @@ exports.Github = (function(){
                         + '/git/trees/'
                         + req.body.sha + '?recursive=1&access_token=' + req.session.github.oauth
 
-      request.get(uri, function(err, resp, data){
-        if(err) {
+      var options = {
+        headers: {
+          "User-Agent": "X-Dillinger-App"
+        },
+        uri: uri
+      }
+
+      request(options, function(e, r, d){
+        if(e) {
           res.send(
             {
               error: 'Request error.' 
-            , data: resp.statusCode
+            , data: r.statusCode
             })
         }
-        else if(!err && resp.statusCode === 200) 
+        else if(!e && r.statusCode === 200) 
         {
-          data = JSON.parse(data)
-          res.json(data)
+          d = JSON.parse(d)
+          res.json(d)
         } // end else if
         else{
           res.json({error: 'Unable to fetch repos from Github.'})
@@ -145,34 +190,42 @@ exports.Github = (function(){
     }, // end fetchTreeFiles
     fetchFile: function(req,res){
 
-      var url = req.body.mdFile
-        , isPrivateRepo = /blob/.test(url)
+      var uri = req.body.mdFile
+        , isPrivateRepo = /blob/.test(uri)
         
       // https://api.github.com/octocat/Hello-World/git/blobs/44b4fc6d56897b048c772eb4087f854f46256132
       // If it is a private repo, we need to make an API call, because otherwise it is the raw file.
       if(isPrivateRepo){
-        url += '?access_token=' + req.session.github.oauth
+        uri += '?access_token=' + req.session.github.oauth
       }
 
-      request.get(url, function(err, resp, data){
-        if(err){
-          res.send(
-            {
-              error: 'Request error.' 
-            , data: resp.statusCode
-            })
+      var options = {
+        headers: {
+          "User-Agent": "X-Dillinger-App"
+        },
+        uri: uri
+      }
+
+      console.dir(options)
+
+      request(options, function(e, r, d){
+        if(e){
+          console.error(e)
+          res.send({
+            error: 'Request error.' 
+          , data: r.statusCode
+          })
         }
-        else if(!err && resp.statusCode === 200) 
-        {
+        else if(!e && r.statusCode === 200){
 
           var json_resp = 
           {
-            data: data
+            data: d
           , error: false
           }
 
           if(isPrivateRepo){
-            var d = JSON.parse(data)
+            d = JSON.parse(d)
             json_resp.data = (new Buffer(d.content, 'base64').toString('ascii'))
           }
 

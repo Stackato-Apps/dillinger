@@ -1,3 +1,5 @@
+<% if(isDropboxConfigured){ %>
+
 <% if(isDropboxAuth) {
  var icon = 'icon-minus'
  var copy = 'Unlink'
@@ -5,7 +7,7 @@
 }else{
   var icon = 'icon-plus'
   var copy = 'Link'
-  var href = dropbox_auth_url
+  var href = '/redirect/dropbox'
 }
 %>
 <a id="drop1" href="#" role="button" class="dropdown-toggle" data-toggle="dropdown">Dropbox <b class="caret"></b></a>
@@ -14,3 +16,4 @@
   <li><a tabindex="-1" href="#" id="import_dropbox"><i class="icon-download-alt"></i>&nbsp;Import from Dropbox</a></li>
   <li><a tabindex="-1" href="#" id="save_dropbox"><i class="icon-hdd"></i>&nbsp;Save to Dropbox</a></li>
 </ul>
+<% } %>

@@ -1,4 +1,4 @@
-name: dillinger
+name: md 
 mem: 128M
 services:
   ${name}-fs: filesystem
@@ -7,8 +7,7 @@ hooks:
   pre-running:
     - export FS=$STACKATO_FILESYSTEM
     - echo "Migrating data to shared filesystem..."
-    - mkdir -p public/files/md
-    - mkdir -p public/files/html
+    - mkdir -p public/files/{md,html,pdf}
     - cp -r public/files $FS
     - echo "Symlink to public folder in shared filesystem..."
     - rm -fr public/files

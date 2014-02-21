@@ -4,113 +4,33 @@ var path = require('path')
   , Core = require( path.resolve(__dirname, '../plugins/core/core.js') ).Core
   , Dropbox = require( path.resolve(__dirname, '../plugins/dropbox/dropbox.js') ).Dropbox
   , Github = require( path.resolve(__dirname, '../plugins/github/github.js') ).Github
+  , GoogleDrive = require('../plugins/googledrive/googledrive.js').GoogleDrive
 
 // Show the home page
-exports.index = function(req, res){
+exports.index = function(req, res) {
   
   // Some flags to be set for client-side logic.
   var indexConfig = {
     isDropboxAuth: !!req.session.isDropboxSynced,
     isGithubAuth: !!req.session.isGithubSynced,
     isEvernoteAuth: !!req.session.isEvernoteSynced,
-    isGoogleDriveAuth: !!req.session.isGoogleDriveSynced
-  }
-  
-  // We set this because generating the oauth stuff is async for 
-  // all 3rd party oauth providers
-  var isReadyAsync = true
-    , isAsyncCounter = 0
-  
-  // Check for dropbox sync
-  if(!req.session.isDropboxSynced){
-    
-    isReadyAsync = false
-    ++isAsyncCounter
-    
-    Dropbox.getNewRequestToken(req,res,function(err,body){
-
-      if(err){
-        return res.render('error',{
-            type: 'dropbox', 
-            title: 'Dillinger Dropbox Link - Error!',
-            db_error: err
-          }) // end res.render
-      }
-
-      var dropbox_auth_url = Dropbox.config.auth_url + 
-                      "?" + qs.stringify(body) + 
-                      "&oauth_callback=" + 
-                      Dropbox.config.callback_url
-
-      // console.log(dropbox_auth_url + " is the auth_url for dropbox")      
-
-      // Create dropbox session object and stash for later.
-      req.session.dropbox = {}
-      req.session.dropbox.oauth = {
-        request_token: null,
-        request_token_secret: body.oauth_token_secret,
-        access_token_secret: null,
-        access_token: null
-      }
-      
-      indexConfig.dropbox_auth_url = dropbox_auth_url
-      
-      isReadyAsync = true
-      --isAsyncCounter
-
-    }) // end getNewRequestToken()
-    
-  }
-  
-  if(!req.session.isGithubSynced){
-    
-    isReadyAsync = false
-    ++isAsyncCounter
-
-    // Create dropbox session object and stash for later.
-    req.session.github = {}
-    req.session.github.oauth = {
-      request_token: null,
-      request_token_secret: null,
-      access_token_secret: null,
-      access_token: null
-    }
-    
-    indexConfig.github_auth_url = Github.generateAuthUrl()
-    
-    isReadyAsync = true
-    --isAsyncCounter
-    
+    isGoogleDriveAuth: !!req.session.isGoogleDriveSynced,
+    isDropboxConfigured: Dropbox.isConfigured,
+    isGithubConfigured: Github.isConfigured,
+    isGoogleDriveConfigured: GoogleDrive.isConfigured   
   }
 
   if(!req.session.isEvernoteSynced){
     console.warn('Evernote not implemented yet.')
   }
-
-  if(!req.session.isGoogleDriveSynced){
-    console.warn('Google Drive not implemented yet.')    
-  }
   
-  // This method manages the async nature of the
-  // oauth providers.
-  function readyToRender(){
-    if(isReadyAsync && !isAsyncCounter) {
-      
-      if(req.session.github && req.session.github.username) indexConfig.github_username = req.session.github.username
-      
-      return res.render('index', indexConfig)
-    }
-    return setTimeout(function(){
-      readyToRender()
-    },10)
-  }
-
-  readyToRender(isReadyAsync,isAsyncCounter)
+  if(req.session.github && req.session.github.username) indexConfig.github_username = req.session.github.username
+  return res.render('index', indexConfig)
   
 }
 
 // Show the not implemented yet page
-exports.not_implemented = function(req,res){
+exports.not_implemented = function(req, res) {
   res.render('not-implemented')
 }
 
@@ -119,19 +39,43 @@ exports.not_implemented = function(req,res){
 exports.fetch_md = Core.fetchMd
 exports.download_md = Core.downloadMd
 exports.fetch_html = Core.fetchHtml
+exports.fetch_html_direct = Core.fetchHtmlDirect
 exports.download_html = Core.downloadHtml
+exports.fetch_pdf = Core.fetchPdf
+exports.download_pdf = Core.downloadPdf
 
 /* End Core stuff */
 
 
 /* Dropbox Stuff */
 
-exports.oauth_dropbox = function(req,res){
-  
-  console.dir(req.query)
+exports.oauth_dropbox_redirect = function(req, res) {
+  Dropbox.getNewRequestToken(req, res, function(status, request_token) {
 
-  // id=409429&oauth_token=15usk7o67ckg644
-  if(req.query && req.query.oauth_token){
+    var dropbox_auth_url = Dropbox.config.auth_url + 
+                    "?oauth_token=" + request_token.oauth_token + 
+                    "&oauth_callback=" + 
+                    Dropbox.config.callback_url
+
+    console.log(dropbox_auth_url + " is the auth_url for dropbox")      
+
+    // Create dropbox session object and stash for later.
+    req.session.dropbox = {}
+    req.session.dropbox.oauth = {
+      request_token: request_token.oauth_token,
+      request_token_secret: request_token.oauth_token_secret,
+      access_token_secret: null,
+      access_token: null
+    }
+    
+    res.redirect(dropbox_auth_url)
+
+  }) 
+}
+
+exports.oauth_dropbox = function(req, res) {
+  
+  // console.dir(req.query)
     
     if(!req.session.dropbox){
       console.log('No dropbox session - browser bug')
@@ -140,7 +84,6 @@ exports.oauth_dropbox = function(req,res){
     }
 
     // Create dropbox session object and stash for later.
-    req.session.dropbox.oauth.request_token = req.query.oauth_token
     req.session.dropbox.oauth.access_token_secret = null
     req.session.dropbox.oauth.access_token = null
   
@@ -149,81 +92,55 @@ exports.oauth_dropbox = function(req,res){
     Dropbox.getRemoteAccessToken( 
       req.session.dropbox.oauth.request_token, 
       req.session.dropbox.oauth.request_token_secret,
-      function(err, data){
-        if(err){
-          console.error(err)
-          res.redirect('/')
-        }
-        else{
-          // console.dir(data)
-          /***
-                { 
-                  oauth_token_secret: 't7enjtftcji6esn'
-                , oauth_token: 'kqjyvtk6oh5xrc1'
-                , uid: '409429' 
-                }
-          ***/
-          req.session.dropbox.oauth.access_token_secret = data.oauth_token_secret,
-          req.session.dropbox.oauth.access_token = data.oauth_token
-          req.session.dropbox.uid = data.uid
+      function(status, access_token){
+
+          console.log(access_token)
+          req.session.dropbox.oauth.access_token_secret = access_token.oauth_token_secret,
+          req.session.dropbox.oauth.access_token = access_token.oauth_token
+          req.session.dropbox.uid = access_token.uid
           req.session.isDropboxSynced = true
           
           // Check to see it works by fetching account info
-          Dropbox.getAccountInfo(req.session.dropbox,function(err,data){
-            if(err) return console.error(err)
+          Dropbox.getAccountInfo(req.session.dropbox, function(status, reply){
+
             console.log('Got account info!')
-            var d = JSON.parse(data)
-            console.log("User %s is now authenticated.", d.display_name )
+            console.log(reply)
+            console.log("User %s is now authenticated.", reply.display_name )
           })
         
           // Now go back to home page with session data in tact.
           res.redirect('/')
-        
-        } // end else in callback
       
     })  // end dbox.getRemoteAccessToken()    
   
-  } // end if
-  else{
-    
-    // Handle deny auth case
-    
-    return res.render('error', {
-      type: 'dropbox', 
-      title: 'PhotoPipe - Error!',
-      error:{
-          error_reason: 'denied',
-          error_description: 'Looks like you denied us from accessing your dropbox account. :('
-        } 
-      }) // end res.render
-      
-  } // end else if
   
 }
 
-exports.unlink_dropbox = function(req,res){
+exports.unlink_dropbox = function(req, res) {
   // Essentially remove the session for dropbox...
   delete req.session.dropbox
   req.session.isDropboxSynced = false
   res.redirect('/')
 }
 
-exports.import_dropbox = function(req,res){
+exports.import_dropbox = function(req, res) {
 
-  Dropbox.searchForMdFiles(req.session.dropbox, function(err,data){
-    if(err) return res.json(err)
-    res.json(data)
+  Dropbox.searchForMdFiles(req.session.dropbox, function(status, data) {
+    console.log(status)
+    if(status === 401) return res.status(401).send("You are not authenticated with Dropbox. Please unlink and link again.")
+    if(status > 399) return res.status(status).send("Something went wrong. Please refresh.")
+    return res.json(data)
   })
 
 }
 
-exports.fetch_dropbox_file = function(req,res){
+exports.fetch_dropbox_file = function(req, res) {
 
   Dropbox.fetchDropboxFile(req,res)
   
 }
 
-exports.save_dropbox = function(req,res){
+exports.save_dropbox = function(req, res) {
 
   Dropbox.saveToDropbox(req, res)
   
@@ -234,9 +151,25 @@ exports.save_dropbox = function(req,res){
 
 /* Github stuff */
 
-exports.oauth_github = function(req,res, next){
+exports.oauth_github_redirect = function(req, res) {
+  // Create dropbox session object and stash for later.
+    req.session.github = {}
+    req.session.github.oauth = {
+      request_token: null,
+      request_token_secret: null,
+      access_token_secret: null,
+      access_token: null
+    }
 
-  if(!req.query.code) next()
+    var uri = Github.generateAuthUrl()
+    console.log(uri)
+    
+    res.redirect(uri)
+}
+
+exports.oauth_github = function(req, res, cb) {
+
+  if(!req.query.code) cb()
   else{
     req.session.oauth = {}
     
@@ -313,3 +246,84 @@ exports.save_github = function(req,res){
 }
 
 /* End Github stuff */
+
+
+/* Google Drive stuff */
+
+function handle_googledrive_response(req, res, err, fn) {
+  if (err) {
+    if (err.code == 401 || err.code == 403) {
+      req.session.googledrive = null;
+      req.session.isGoogleDriveSynced = false;
+    }
+    res.status(err.code || 400).send('Error: ' + err.message);
+  } else {
+    fn(req, res);
+  }
+}
+
+exports.oauth_googledrive_redirect = function(req, res) {
+  res.redirect(GoogleDrive.generateAuthUrl());
+}
+
+exports.oauth_googledrive = function(req, res, next) {
+  var code = req.query.code;
+  GoogleDrive.getToken(code, function(err, tokens) {
+    if (!err) {
+      req.session.isGoogleDriveSynced = true;
+      req.session.googledrive = tokens;
+    }
+    res.redirect('/');
+  });
+}
+
+exports.unlink_googledrive = function(req, res) {
+  req.session.googledrive = null;
+  req.session.isGoogleDriveSynced = false;
+  res.redirect('/');
+}
+
+exports.import_googledrive = function(req, res) {
+  if (!req.session.googledrive) {
+    res.status(401).send('Google Drive is not linked.');
+    return;
+  }
+  var tokens = req.session.googledrive;
+  GoogleDrive.search(tokens, function(err, data) {
+    handle_googledrive_response(req, res, err, function() {
+      res.json(data);
+    });
+  });
+}
+
+exports.fetch_googledrive_file = function(req, res) {
+  if (!req.session.googledrive) {
+    res.status(401).send('Google Drive is not linked.');
+    return;
+  }
+  var fileId = req.query.fileId
+    , tokens = req.session.googledrive;
+  GoogleDrive.get(tokens, fileId, function(err, response) {
+    handle_googledrive_response(req, res, err, function() {
+      res.json(response);
+    });
+  });
+}
+
+exports.save_googledrive = function(req, res) {
+  if (!req.session.googledrive) {
+    res.status(401).send('Google Drive is not linked.');
+    return;
+  }
+  var fileId = req.query.fileId
+    , content = req.body.content
+    , title = req.body.title
+    , tokens = req.session.googledrive;
+  GoogleDrive.save(tokens, fileId, title, content, function(err, data) {
+    handle_googledrive_response(req, res, err, function() {
+      res.send(data);
+    });
+  });
+}
+
+/* End of Google Drive stuff */
