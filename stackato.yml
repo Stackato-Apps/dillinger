@@ -1,4 +1,4 @@
-name: md 
+name: dillinger
 mem: 128M
 services:
   ${name}-fs: filesystem
