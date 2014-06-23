@@ -5,6 +5,7 @@
 var walkdir = require('walkdir')
   , path = require('path')
   , fs = require('fs')
+  , stylus = require('stylus')
 
 /**
   Some helpers for deployment, cleaning up...
@@ -33,6 +34,36 @@ function cleaner(){
     walkAndUnlink( path.join(__dirname, 'public', 'js'), new RegExp(/dillinger-/) )
 }
 
+function buildCss(stylusFilePath, writeToPath) {
+  console.log('Generating style.css')
+
+  var styleFileName = path.basename(stylusFilePath, '.styl')
+    , cssFileName = styleFileName + '.css'
+
+  fs.readFile(stylusFilePath, 'utf8', function(err, str) {
+    if (err) {
+      return new Error('Error reading stylus file: ' + err)
+    }
+    //Compile it
+    var compiled = stylus(str)
+      .set('filename', cssFileName)
+      .set('compress', false)
+      .set('paths', [__dirname, __dirname + '/public/css'])
+
+    compiled.render(function(err, css) {
+      if(err) {
+        return new Error('Error rendering stylus file: ' + err)
+      }
+      fs.writeFileSync(writeToPath + '/' + cssFileName, css, 'utf8', function(err, data) {
+        if(err) {
+          return new Error('Error writing css file: ' + err)
+        }
+        console.log('style.css generated')
+      })
+    })
+  })
+}
+
 // Concats, minifies js and css for production
 function smoosher(){
 
@@ -58,6 +89,7 @@ function smoosher(){
                         { "src": "./public/js/ace.js", "jshint": false}, 
                         { "src": "./public/js/mode-markdown.js", "jshint": false}, 
                         { "src": "./public/js/marked.js", "jshint": false},
+                        { "src": "./public/js/highlight.pack.js", "jshint": false},
                         { "src": "./public/js/keymaster.js", "jshint": false}],
       "dillinger": [ "./public/js/dillinger.js" ]
     },
@@ -73,4 +105,5 @@ function smoosher(){
 }
 
 cleaner()
+buildCss('./public/css/style.styl', './public/css')
 setTimeout(smoosher,750)

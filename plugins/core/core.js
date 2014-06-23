@@ -13,14 +13,17 @@ markdown.setOptions({
   pedantic: false,
   sanitize: false,
   smartLists: true,
-  smartypants: false
+  smartypants: false,
+  highlighter: function(code) {
+    return require('highlight.js').highlightAuto(code).value;
+  }
 })
 
 
 exports.Core = (function(){
-  
-  function _generateRandomMdFilename(ext){
-    return 'dillinger_' +(new Date()).toISOString().replace(/[\.:-]/g, "_")+ '.' + ext
+
+  function _getFullHtml(name, str){
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + name + '</title></head><body>\n' + markdown(str) + '\n</body></html>'
   }
   
   function _getHtml(str){
@@ -36,8 +39,7 @@ exports.Core = (function(){
         , error: false
         }
 
-      // TODO: maybe change this to user submitted filename or name of repo imported file?
-      var name = _generateRandomMdFilename('md') 
+      var name = req.body.name.trim() + '.md'
       var filename = path.resolve(__dirname, '../../public/files/md/' + name )
 
       // TODO: THIS CAN BE OPTIMIZED WITH PIPING INSTEAD OF WRITING TO DISK
@@ -92,9 +94,9 @@ exports.Core = (function(){
         , error: false
         }
 
-      var html = _getHtml(req.body.unmd)  
+      var html = _getFullHtml(req.body.name, unmd)
 
-      var name = _generateRandomMdFilename('html') 
+      var name = req.body.name.trim() + '.html'
 
       var filename = path.resolve(__dirname, '../../public/files/html/' + name )
       
@@ -162,7 +164,7 @@ exports.Core = (function(){
       , error: false
       }
 
-      var html = _getHtml(unmd)
+      var html = _getFullHtml(req.body.name, unmd)
       var temp = path.resolve(__dirname, '../../public/files/pdf/temp.html')
 
       fs.writeFile( temp, html, 'utf8', function(err, data){
@@ -174,7 +176,7 @@ exports.Core = (function(){
           res.json( json_response )
         }
         else{
-          var name = _generateRandomMdFilename('pdf')
+          var name = req.body.name.trim() + '.pdf'
           var filename = path.resolve(__dirname, '../../public/files/pdf/' + name)
 
           var childArgs = [

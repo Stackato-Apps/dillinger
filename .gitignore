@@ -1,8 +1,12 @@
 .DS_Store
+
+#Dillinger
 node_modules/*
 logs/*
 public/files/md/*.md
 public/files/html/*.html
+public/css/style.css
+
 *-config.json
 backup/*
 
@@ -38,3 +42,9 @@ nb-configuration.xml
 # SublimeText project files
 /*.sublime-project
 *.sublime-workspace
+
+# NPM debug log
+npm-debug.log
+
+# Vim
+*.swp
