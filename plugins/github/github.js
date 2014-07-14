@@ -41,8 +41,8 @@ var APP_URL="localhost";
 if (process.env.VCAP_APPLICATION)
   APP_URL = JSON.parse(process.env.VCAP_APPLICATION).uris[0]
 
-github_config.redirect_uri = "http://"+APP_URL;
-github_config.callback_url = "http://"+APP_URL+"/oauth/github";
+githubConfig.redirect_uri = "http://"+APP_URL;
+githubConfig.callback_url = "http://"+APP_URL+"/oauth/github";
 
 function arrayToRegExp(arr) {
   return new RegExp("(" + arr.map(function(e) { return e.replace('.','\\.'); }).join('|') + ")$", 'i');
