@@ -1,4 +1,4 @@
-#Dillinger (Stackato-ready)!
+#Dillinger
 
 .. forked from https://github.com/joemccann/dillinger
 
@@ -20,11 +20,9 @@ Markdown is a lightweight markup language based on the formatting conventions th
 
 This text you see here is *actually* written in Markdown! To get a feel for Markdown's syntax, type some text into the left window and watch the results in the right.  
 
-## Deploying to Stackato
+## Deploying to HPE Helion Stackato
 
 ```sh
-git clone [git-repo-url] dillinger
-cd dillinger
 stackato push -n
 ```
 
@@ -37,11 +35,6 @@ npm i -d
 mkdir -p public/files/{md,html,pdf}
 node app
 ```
-
-Version
-----
-
-2.stackato-ized
 
 Tech
 ----
